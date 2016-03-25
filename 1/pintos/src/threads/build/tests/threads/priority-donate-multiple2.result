@@ -1,0 +1,4 @@
+FAIL
+Kernel panic in run: PANIC at ../../threads/synch.c:234 in lock_release(): assertion `lock_held_by_current_thread (lock)' failed.
+Call stack:
+Translation of call stack:

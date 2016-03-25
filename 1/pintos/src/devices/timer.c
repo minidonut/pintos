@@ -29,6 +29,10 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 
+static bool is_less(const struct list_elem *, const struct list_elem *, void *);
+static struct list sleep_list;
+static void wake_up();
+
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
    corresponding interrupt. */
@@ -44,6 +48,9 @@ timer_init (void)
   outb (0x40, count >> 8);
 
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+
+  list_init(&sleep_list);
+
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -84,6 +91,7 @@ timer_ticks (void)
   return t;
 }
 
+
 /* Returns the number of timer ticks elapsed since THEN, which
    should be a value once returned by timer_ticks(). */
 int64_t
@@ -97,11 +105,28 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
+  struct thread *cur = thread_current();
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  cur->wakeup = start + ticks;
+  
+  list_insert_ordered(&sleep_list, &cur->elem, &is_less , NULL);
+  
+  enum intr_level old_level = intr_disable ();
+  thread_block();
+  intr_set_level (old_level);
 }
+
+static bool
+is_less(const struct list_elem* e1, const struct list_elem* e2, void* aux UNUSED){
+  struct thread* t1 = list_entry(e1, struct thread, elem);
+  struct thread* t2 = list_entry(e2, struct thread, elem);
+  if(t1->wakeup < t2->wakeup){
+    return true;
+  }else{
+    return false;
+  }
+}
+
 
 /* Suspends execution for approximately MS milliseconds. */
 void
@@ -136,7 +161,28 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+
+  wake_up();
+
   thread_tick ();
+}
+
+static void
+wake_up(){
+  if (!list_empty(&sleep_list)){
+    struct thread* t;
+    t = list_entry (list_front (&sleep_list), struct thread, elem); 
+    if (ticks >= t->wakeup){
+      list_pop_front (&sleep_list);
+      thread_unblock (t);
+      wake_up();
+    }else{
+      return;
+    }
+  }else{
+    return;
+  }
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -203,6 +203,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  if(priority > thread_current()->priority){
+    thread_yield();
+  }
+
   return tid;
 }
 
@@ -470,8 +474,23 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
+    list_sort(&ready_list, &is_high, NULL);
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
+
+
+bool
+is_high(const struct list_elem* e1, const struct list_elem* e2, void* aux UNUSED){
+  struct thread* t1 = list_entry(e1, struct thread, elem);
+  struct thread* t2 = list_entry(e2, struct thread, elem);
+  if(t1->priority > t2->priority){
+    return true;
+  }else{
+    return false;
+  }
+}
+
+
 
 /* Completes a thread switch by activating the new thread's page
    tables, and, if the previous thread is dying, destroying it.
