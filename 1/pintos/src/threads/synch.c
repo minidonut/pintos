@@ -32,6 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+
+static bool is_high_sema(const struct list_elem *, const struct list_elem *, void *);
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -364,6 +366,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   
   sema_init (&waiter.semaphore, 0);
   list_push_back (&cond->waiters, &waiter.elem);
+  //list_insert_ordered(&cond->waiters, &waiter.elem, is_high_sema, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -384,9 +387,25 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) 
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+  if (!list_empty (&cond->waiters)) {
+    list_sort(&cond->waiters, is_high_sema, NULL);
+    sema_up (&list_entry (list_pop_front (&cond->waiters),struct semaphore_elem, elem)->semaphore);
+  }
+}
+
+static bool
+is_high_sema(const struct list_elem* e1, const struct list_elem* e2, void* aux UNUSED){
+  struct semaphore* s1 = &list_entry(e1, struct semaphore_elem, elem)->semaphore;
+  struct semaphore* s2 = &list_entry(e2, struct semaphore_elem, elem)->semaphore;
+
+  struct thread* t1 = list_entry(list_front(&s1->waiters), struct thread, elem);
+  struct thread* t2 = list_entry(list_front(&s2->waiters), struct thread, elem);
+
+  if(t1->priority > t2->priority){
+    return true;
+  }else{
+    return false;
+  }
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
