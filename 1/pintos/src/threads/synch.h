@@ -24,6 +24,7 @@ struct lock
     struct semaphore semaphore; /* Binary semaphore controlling access. */
     struct list_elem elem;
     int original_priority;
+    struct thread *thread_waiting_this;
   };
 
 void lock_init (struct lock *);
@@ -32,7 +33,7 @@ bool lock_try_acquire (struct lock *);
 void lock_release (struct lock *);
 bool lock_held_by_current_thread (const struct lock *);
 void priority_donate(struct thread *, int priority, struct lock *);
-void restore_priority(struct thread *, struct lock *);
+void restore_priority(struct lock *);
 
 /* Condition variable. */
 struct condition 

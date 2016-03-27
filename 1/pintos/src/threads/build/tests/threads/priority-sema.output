@@ -1,4 +1,4 @@
-Writing command line to /tmp/R7GbswkgKK.dsk...
+Writing command line to /tmp/xIRo3FrA5w.dsk...
 squish-pty bochs -q
 ========================================================================
                        Bochs x86 Emulator 2.6.6
@@ -35,7 +35,7 @@ Executing 'priority-sema':
 (priority-sema) Back in main thread.
 (priority-sema) end
 Execution of 'priority-sema' complete.
-Timer: 155 ticks
+Timer: 156 ticks
 Thread: 0 idle ticks, 158 kernel ticks, 0 user ticks
 Console: 1190 characters output
 Keyboard: 0 keys pressed

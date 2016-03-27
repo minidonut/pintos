@@ -91,7 +91,8 @@ struct thread
 
     int64_t wakeup; /* PRJ#1 ticks for wake up */    
     
-    struct list *holding_lock;
+    struct lock *holding_lock;
+    struct list list_holding_locks;
     struct lock *waiting_lock;
     bool is_donated;
     int original_priority;
