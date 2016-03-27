@@ -69,7 +69,9 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      // list_push_back (&sema->waiters, &thread_current ()->elem);
+      list_insert_ordered(&sema->waiters, &thread_current()->elem, &is_high, NULL);
+      // list_sort(&sema->waiters, &is_high, NULL);
       thread_block ();
     }
   sema->value--;
@@ -184,7 +186,6 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
-  lock->original_priority = -1;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -218,6 +219,7 @@ lock_acquire (struct lock *lock)
 
   sema_down (&lock->semaphore);
   lock->holder = cur;
+  list_push_front(&cur->list_holding_locks, &lock->elem);
   cur->waiting_lock = NULL;
 
 }
@@ -234,11 +236,10 @@ void priority_donate(struct thread *holder, int priority, struct lock *lock){
   if(holder->is_donated == false){
     holder->original_priority = holder->priority;
     holder->is_donated = true;
-    holder->holding_lock = lock;
     // printf("priority is donated: %d\n", priority);
   }
   //printf("priority is donated: %d from %s to %s \n", priority, thread_name(), holder->name);
-  list_push_front(&holder->list_holding_locks, &lock->elem);
+  
   holder->priority = priority;
 }
 
@@ -275,6 +276,8 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
   
+  list_remove(&lock->elem);
+
   restore_priority(lock);
 
   lock->holder = NULL;
@@ -286,19 +289,17 @@ void restore_priority(struct lock *lock){
   struct thread *cur = thread_current();
 
   if (cur->is_donated == true){
-    if(lock == cur->holding_lock){
+    if(list_empty(&cur->list_holding_locks)){
       cur->priority = cur->original_priority;
-      cur->is_donated = false;
+      cur->is_donated = list_empty(&cur->list_holding_locks);
     }else{
-      
+      struct semaphore *sema;
+      sema = &list_entry(list_front(&cur->list_holding_locks), struct lock, elem)->semaphore;
+      if(!list_empty(&sema->waiters)){
+        cur->priority = list_entry(list_front(&sema->waiters), struct thread, elem)->priority;
+      }
     }
-    // printf("priority is restored: %d\n", holder->priority);
   }
-
-  // if (lock->original_priority >= 0){
-  //   holder->priority = lock->original_priority;
-  //   lock->original_priority = -1;    
-  // }
 
 }
 
