@@ -110,15 +110,20 @@ void
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
-
+  struct thread *t;
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+  if (!list_empty (&sema->waiters)) {
+    list_sort(&sema->waiters, &is_high, NULL);
+    t = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+    thread_unblock (t);
+  }
   sema->value++;
   intr_set_level (old_level);
+
+  if(t != NULL && t->priority > thread_current()->priority)
+    thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -197,9 +202,34 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  struct thread *cur = thread_current();
+
+  enum intr_level old_level = intr_disable (); //avoid race condition
+
+  if(lock->holder != NULL){
+    
+    cur->waiting_lock = lock;
+    priority_donate(lock->holder, cur->priority, lock);
+    
+  }
+
+  intr_set_level (old_level); //avoid race condition
+
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+  lock->holder = cur;
+
 }
+
+void priority_donate(struct thread *holder, int priority, struct lock *lock){
+  if(holder->is_donated == false){
+    holder->original_priority = holder->priority;
+    holder->is_donated = true;
+    holder->holding_lock = lock;
+    // printf("priority is donated: %d\n", priority);
+  }
+  holder->priority = priority;
+}
+
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -232,9 +262,20 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+  
+  restore_priority(lock->holder, lock);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+}
+
+void restore_priority(struct thread *holder, struct lock *lock){
+
+  if (holder->is_donated == true && lock == holder->holding_lock){
+    holder->priority = holder->original_priority;
+    holder->is_donated = false;
+    // printf("priority is restored: %d\n", holder->priority);
+  }
 }
 
 /* Returns true if the current thread holds LOCK, false

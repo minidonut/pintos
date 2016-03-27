@@ -37,6 +37,7 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+struct lock priority_changing;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -65,6 +66,7 @@ static void kernel_thread (thread_func *, void *aux);
 static void idle (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
+static struct thread *get_next_thread_to_run (void);
 static void init_thread (struct thread *, const char *name, int priority);
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
@@ -95,6 +97,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  lock_init(&priority_changing);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -319,16 +322,25 @@ thread_yield (void)
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void
+// void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  enum intr_level old_level = old_level = intr_disable ();
+  if (thread_current()->is_donated == false){ 
+    thread_current ()->priority = new_priority;
+  }else{
+    thread_current ()->original_priority = new_priority;
+  }
+  intr_set_level (old_level);
+
+  if (get_next_thread_to_run()->priority > new_priority)
+    thread_yield();
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
-{
+{  
   return thread_current ()->priority;
 }
 
@@ -447,6 +459,8 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->original_priority = priority;  //changed
+  t->is_donated = false;  //changed
   t->magic = THREAD_MAGIC;
 }
 
@@ -471,11 +485,25 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  if (list_empty (&ready_list)){
     return idle_thread;
-  else
+  }
+  else{
     list_sort(&ready_list, &is_high, NULL);
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  }
+}
+
+static struct thread *
+get_next_thread_to_run (void) 
+{
+  if (list_empty (&ready_list)){
+    return idle_thread;
+  }
+  else{
+    list_sort(&ready_list, &is_high, NULL);
+    return list_entry (list_front (&ready_list), struct thread, elem);
+  }
 }
 
 
